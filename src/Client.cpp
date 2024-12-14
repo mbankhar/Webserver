@@ -76,6 +76,8 @@ size_t	Client::parseRequest(char *buffer, int bytesRead)
 		else
 			this->is_sending = true;
 	}
+	cout << "FIRST REQUEST : " << this->requests.at(0);
+	// cout << "SECOND REQUEST : " << this->requests.at(1); //Storing image in second request
 	return (count);
 }
 
@@ -92,3 +94,9 @@ void	Client::queueResponse(std::string response)
 	//else create an event to proccess the completed request
 
 	//repeat until the buffer is empty
+
+	void	Client::queueRequest(std::string request)
+	{
+		this->requests.push_back(request);
+		this->is_sending = true;
+	}

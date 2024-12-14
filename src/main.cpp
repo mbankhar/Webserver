@@ -5,13 +5,6 @@
 
 std::atomic<bool> keepRunning(true); // Global flag for server loop
 
-void	InitServer(Config &config, int i)
-{
-	Server server(config.getServerBlocks(), i);
-
-	server.run();
-}
-
 void signalHandler(int signum) {
     std::cout << "\nInterrupt signal (" << signum << ") received.\n";
     keepRunning = false; // Stop the server loop
@@ -27,6 +20,14 @@ void setupSignalHandler() {
         perror("sigaction");
         exit(EXIT_FAILURE);
     }
+}
+
+void	InitServer(Config &config, int i)
+{
+	Server server(config.getServerBlocks(), i);
+	setupSignalHandler();
+	server.run();
+	return;
 }
 
 int main(int argc, char** argv) {

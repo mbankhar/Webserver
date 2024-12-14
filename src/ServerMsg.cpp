@@ -3,10 +3,10 @@
 /*                                                        :::      ::::::::   */
 /*   ServerMsg.cpp                                      :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: rchavez <rchavez@student.42heilbronn.de    +#+  +:+       +#+        */
+/*   By: rchavez@student.42heilbronn.de <rchavez    +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/12/06 12:37:14 by rchavez           #+#    #+#             */
-/*   Updated: 2024/12/13 12:09:35 by rchavez          ###   ########.fr       */
+/*   Updated: 2024/12/14 19:24:58 by rchavez@stu      ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -134,7 +134,9 @@ void	Server::msg_receive(Client &client, int mode)
 	int	bytes;
 	size_t	received;
 
+	cout << "RECEIVE CALLED\n";
 	bytes = recv(client.getSocket(), buffer, bufferSize, 0);
+	cout << "Received bytes: " << bytes << "\n";
 	if (bytes > 0)
 	{
 		received = client.parseRequest(&buffer[0], bytes);
@@ -142,6 +144,10 @@ void	Server::msg_receive(Client &client, int mode)
 			this->postEvent(client.getSocket(), 1);
 		if (bytes == bufferSize)
 			this->postEvent(client.getSocket(), 0);
+		else
+		{
+			client.getRequest();
+		}
 	}
 	else if (bytes == 0 && !mode)
 	{

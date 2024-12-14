@@ -93,19 +93,26 @@ void Server::run()
 				{
 					HttpRequest		request(this->clients[event/10].getRequest(), this->_server_blocks);
 					request.debug();
-					HttpResponse	response(request);
-					this->clients[event/10].popRequest();
-					this->clients[event/10].queueResponse(response.returnResponse());
-// 					this->clients[event/10].queueResponse("HTTP/1.1 200 OK\r\n"
-// "Content-Type: text/html; charset=UTF-8\r\n"
-// "Content-Length: 13\r\n"
-// "\r\n"
-// "Hello, World!");
-					this->postEvent(event/10, 2);
-					response.debug();
+					if (request.getMethod() == "POST")
+					{
+						handlePost(event/10, this->clients[event/10].getRequest());
+						this->clients[event/10].popRequest();
+						cout << "HANDLE POST CALLED\n";
+					}
+					else
+					{
+						HttpResponse	response(request);
+						this->clients[event/10].popRequest();
+						this->clients[event/10].queueResponse(response.returnResponse());
+						this->postEvent(event/10, 2);
+						response.debug();
+					}
 				}
 				else if (event % 10 == 2)
+				{
 					msg_send(this->clients[event/10], 0);
+					cout << "SEND CALLED\n";
+				}
 				this->removeEvent(event);
 			}
 			else if (eventList[i].filter == EVFILT_WRITE)
@@ -171,4 +178,11 @@ std::string Server::getMimeType(const std::string& filePath)
 	if (extension == "txt") return "text/plain";
 
 	return "application/octet-stream";
+}
+
+void	Server::handlePost(int clientSock, string &httpRequest)
+{
+	this->clients[clientSock].queueRequest(httpRequest.substr(httpRequest.find("U"), httpRequest.size()));
+	this->clients[clientSock].queueResponse("HTTP/1.1 100 Continue/r/n/r/n");
+	this->postEvent(clientSock, 2);
 }

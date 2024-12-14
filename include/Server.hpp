@@ -13,6 +13,8 @@ class HttpRequest; // Forward declaration
 class HttpResponse; // Forward declaration
 class Client;
 
+using std::string;
+
 /**
  * A Class representing the server, used to create a socket and listen to inncoming connections or requests.
  * 
@@ -28,7 +30,7 @@ public:
 	Server(std::vector<ServerBlock>& server_blocks, int i);
 	void run();
 	void handleGet(int clientSock, HttpRequest& httpRequest);
-	void handlePost(int clientSock, HttpRequest& httpRequest);
+	void handlePost(int clientSock, string& httpRequest);
 	void handleDelete(int clientSock, HttpRequest& httpRequest);
 	// std::string resolvePath(const std::string& uri);
 

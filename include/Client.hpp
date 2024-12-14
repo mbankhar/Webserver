@@ -38,6 +38,7 @@ class Client
 	bool		&isSending();
 	bool		&isReceiving();
 	void		queueResponse(std::string response);
+	void		queueRequest(std::string request);
 
 	size_t	parseRequest(char *buffer, int bytesRead);
 	// void	queueResponse(string response);
