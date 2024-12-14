@@ -6,7 +6,7 @@
 #    By: gstronge <gstronge@student.42heilbronn.    +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2024/12/05 10:29:16 by rchavez           #+#    #+#              #
-#    Updated: 2024/12/12 14:09:30 by gstronge         ###   ########.fr        #
+#    Updated: 2024/12/14 12:32:33 by gstronge         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -31,6 +31,8 @@ SRCS		=	$(SRC_DIR)/Config.cpp \
 				$(SRC_DIR)/ServerBlock.cpp \
 				$(SRC_DIR)/HTTPRequest.cpp \
 				$(SRC_DIR)/HTTPResponse.cpp \
+				$(SRC_DIR)/GetResponse.cpp \
+				$(SRC_DIR)/PostResponse.cpp \
 				$(SRC_DIR)/Server.cpp \
 				$(SRC_DIR)/methods.cpp \
 				$(SRC_DIR)/main.cpp \

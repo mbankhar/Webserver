@@ -1,6 +1,9 @@
 #include "../include/Server.hpp"
 #include "../include/HTTPRequest.hpp"
 #include "../include/HTTPResponse.hpp"
+#include "../include/GetResponse.hpp"
+#include "../include/PostResponse.hpp"
+// #include "../include/DeleteResponse.hpp"
 #include "../include/Client.hpp"
 #include "../include/Config.hpp"
 #include "../include/Webserv.hpp"
@@ -19,7 +22,7 @@ extern std::atomic<bool> keepRunning;
 
 Server::Server(std::vector<ServerBlock>& server_blocks) : _server_blocks(server_blocks)
 {
-	int port = std::stoi(server_blocks[0].directive_pairs["listen"]);// TODO: need to make this cycle through all server blocks
+	int port = std::stoi(_server_blocks[0].directive_pairs["listen"]);// TODO: need to make this cycle through all server blocks
 	serverSock = socket(AF_INET, SOCK_STREAM, 0);
 	if (serverSock < 0) throw std::runtime_error("Socket creation failed");
 
@@ -93,16 +96,27 @@ void Server::run()
 				{
 					HttpRequest		request(this->clients[event/10].getRequest(), this->_server_blocks);
 					request.debug();
-					HttpResponse	response(request);
+					
+					HttpResponse*	response;
+
+					if (request.getMethod() == "GET")
+						response = new GetResponse(request);
+					if (request.getMethod() == "POST")
+						response = new PostResponse(request);
+					// if (request.getMethod() == "DELETE")
+					// 	response = new DeleteResponse(request);
+
 					this->clients[event/10].popRequest();
-					this->clients[event/10].queueResponse(response.returnResponse());
-// 					this->clients[event/10].queueResponse("HTTP/1.1 200 OK\r\n"
-// "Content-Type: text/html; charset=UTF-8\r\n"
-// "Content-Length: 13\r\n"
-// "\r\n"
-// "Hello, World!");
+					this->clients[event/10].queueResponse(response->returnResponse());
+					// this->clients[event/10].queueResponse("HTTP/1.1 200 OK\r\n"
+					// "Content-Type: text/html; charset=UTF-8\r\n"
+					// "Content-Length: 13\r\n"
+					// "\r\n"
+					// "Hello, World!");
 					this->postEvent(event/10, 2);
-					response.debug();
+					response->debug();
+
+					delete response;
 				}
 				else if (event % 10 == 2)
 					msg_send(this->clients[event/10], 0);

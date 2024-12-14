@@ -119,7 +119,6 @@ public:
 	void validateHeaders();               // Validates headers for errors, sets status code
 	void parseMultipartFilename();        // Parses multipart body to extract filename
 	void headersGood();
-
+    void processBody(const std::string& body);
 
 };
-

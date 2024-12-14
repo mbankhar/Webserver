@@ -2,16 +2,22 @@
 #include "../include/HTTPResponse.hpp"
 #include "../include/ServerBlock.hpp"
 
+#include <cstdio>
+
 class HttpRequest;
 
 HttpResponse::HttpResponse(const HttpRequest& request)
 {
 	this->_http_version = request.getHttpVersion();
 	this->_chunking_required = false;
-	int status_code_no = setFilePath(request);
-	setStatusCode(status_code_no, request);
-	setBody(true, request);
-	setHeaders(status_code_no, request);
+	this->_stat_code_no = request.getStatusCode();
+	if (this->_stat_code_no != 200)
+	{
+		setErrorFilePath(request);
+		setStatusCode(this->_stat_code_no, request);
+		setBody(true, request);
+		setHeaders(request);
+	}
 }
 
 HttpResponse::~HttpResponse()
@@ -19,9 +25,9 @@ HttpResponse::~HttpResponse()
 	
 }
 
-int HttpResponse::setFilePath(const HttpRequest& request)
+void HttpResponse::setFilePath(const HttpRequest& request)
 {
-	int status_code_no = 200;// TODO: make sure it is checking all subfolders and not just e.g. if you have /test/folder/uploads/ rather than /uploads/
+	// TODO: make sure it is checking all subfolders and not just e.g. if you have /test/folder/uploads/ rather than /uploads/
 
 	const ServerBlock& block = request.getRequestBlock();
 	const std::map<std::string, std::map<std::string, std::string>>& locations = block.location_blocks;
@@ -35,8 +41,10 @@ int HttpResponse::setFilePath(const HttpRequest& request)
 		}
 	}
 	if (locations.find(matchedLocation) == locations.end())
-		return 404;
-	this->_matched_location = matchedLocation;
+	{
+		this->_stat_code_no = 404;
+		return;
+	}
 	const auto& locationConfig = locations.at(matchedLocation);
 	try {
 		this->_file_path = resolvePath(request.getUri(), block, locationConfig);
@@ -48,23 +56,29 @@ int HttpResponse::setFilePath(const HttpRequest& request)
 			while (methods >> method)
 				allowedMethods.insert(method);
 			if (allowedMethods.find(request.getMethod()) == allowedMethods.end())
-				return 405;
+			{
+				this->_stat_code_no = 405;
+				return;
+			}
 		}
 		std::ifstream file(this->_file_path);
 		if (!file.good())
-			return 404;
+		{
+			this->_stat_code_no = 404;
+			return;
+		}
 		file.close();
 	}
 	catch (const std::runtime_error& e)// TODO: is this the correct way to use try catch ?????????????????????
 	{
 		std::cerr << e.what() << "\n";
-		return 400;
+		{
+			this->_stat_code_no = 400;
+			return;
+		}
 	}
-	return status_code_no;
+	return;
 }
-
-
-
 
 
 std::string HttpResponse::resolvePath(const std::string& uri, const ServerBlock& block, const std::map<std::string, std::string>& locationConfig)
@@ -133,53 +147,40 @@ std::string HttpResponse::getFromLocation(const std::string& location, const std
     throw std::runtime_error("Data '" + key + "' not found in the location '" + location + "' or globally.");
 }
 
-void HttpResponse::setErrorFilePath(const int& error_code_no, HttpRequest request) {
-    std::string error_code_str = std::to_string(error_code_no);
-    const ServerBlock& block = request.getRequestBlock();
+void HttpResponse::setErrorFilePath(const HttpRequest& request)
+{
+	std::string error_code_str = std::to_string(this->_stat_code_no);
 
-    try {
-        std::string errorPagePath;
+	try {
+		// Use get_from_location to fetch the error page configuration
+		std::string errorPagePath = getFromLocation(this->_file_path, "error_page", request);
 
-        // Check for location-specific error_page_<error_code>
-        try {
-            errorPagePath = getFromLocation(this->_matched_location, error_code_str, request);
-            std::cerr << "[DEBUG] Using location-specific error_page: " << errorPagePath << "\n";
-        } catch (const std::runtime_error&) {
-            // Fallback to global error_pages
-            if (block.error_pages.find(error_code_str) != block.error_pages.end()) {
-                errorPagePath = block.error_pages.at(error_code_str);
-                std::cerr << "[DEBUG] Using global error_page: " << errorPagePath << "\n";
-            } else {
-                throw std::runtime_error("No error page found for code: " + error_code_str);
-            }
-        }
+		// Construct the full path to the error page
+		this->_file_path = resolvePath(errorPagePath + "/" + error_code_str + ".html", request.getRequestBlock(), {});
+	} catch (const std::runtime_error& e) {
+		// Log the error for debugging purposes
+		std::cerr << "[ERROR] Error while setting error file path: " << e.what() << "\n";
 
-        // Resolve path
-        this->_file_path = resolvePath(errorPagePath, block, {});
-        std::cerr << "[DEBUG] Resolved error file path: " << this->_file_path << "\n";
-    } catch (const std::runtime_error& e) {
-        std::cerr << "[ERROR] Error while setting error file path: " << e.what() << "\n";
-    }
+	}
 }
 
 
 
 
 
-
-
-void	HttpResponse::setStatusCode(const int& status_code_no, HttpRequest request)
+void	HttpResponse::setStatusCode(const int status_code_no, const HttpRequest& request)
 {
-	auto it = _error_status_codes.find(status_code_no);
+	this->_stat_code_no = status_code_no;
+	auto it = _error_status_codes.find(this->_stat_code_no);
 	if (it != _error_status_codes.end())
 		this->_status_code = it->second;
 	else
 		std::cout << "UNKNOWN STATUS CODE\n";// TODO: need to decide what to do in this situation!!!!!!!!!!!!!!!!!
-	if (status_code_no != 200 && status_code_no != 201)
-		setErrorFilePath(status_code_no, request);// TODO: do this -----------------------------------
+	if (this->_stat_code_no != 200 && this->_stat_code_no != 201)
+		setErrorFilePath(request);// TODO: do this -----------------------------------
 }
 
-void	HttpResponse::setBody(bool is_first_try, HttpRequest request)
+void	HttpResponse::setBody(bool is_first_try, const HttpRequest& request)
 {
 	std::stringstream	buffer;
 	std::ifstream		file(this->_file_path, std::ios::binary);
@@ -197,35 +198,46 @@ void	HttpResponse::setBody(bool is_first_try, HttpRequest request)
 		setBody(false, request);
 	}
 	else
-		this->_body = "404 Not Found"; // TODO: need to complete this with a basic html page
+		this->_body = "<HTML>"
+		"<H1>404 Not Found</H1>"
+		"<P>The requested resource was not found.</P>"
+		"</HTML>";
 }
 
-void	HttpResponse::setHeaders(const int& status_code_no, const HttpRequest& request)
+void	HttpResponse::setHeaders(const HttpRequest& request)
 {
+	if (this->_stat_code_no == 100)
+		return;
 	this->_headers["Server"] = "webserv/42.0";
 	this->_headers["Date"] = this->setDateHeader();
-	this->_headers["Connection"] = "keep-alive";
+	this->_headers["Content-Type"] = "text/html; charset=UTF-8";
+	this->_headers["Connection"] = "close";
+	if (this->_stat_code_no == 405 || this->_stat_code_no == 501)
+		this->_headers["allowed"] = "GET POST DELETE";// TODO: need to get this from the config file of the server
 
-	if (status_code_no == 200 && request.getMethod() == "GET")
-	{
-		this->_headers["Last-Modified"] = this->setLastModifiedHeader();
-		this->_headers["Content-Type"] = this->setMimeTypeHeader();
-	}
-	else if (status_code_no == 201 && request.getMethod() == "POST")
-	{
+	if (request.getMethod() == "????")
+		return;// TODO: need to decide if we really need request here ----------------------------------
 
-	}
-	else if (status_code_no == 200 && request.getMethod() == "DELETE")
-	{
 
-	}
-	else
-	{
-		this->_headers["Content-Type"] = "text/html; charset=UTF-8";
-		this->_headers["Connection"] = "close";
-		if (status_code_no == 405 || status_code_no == 501)
-			this->_headers["allowed"] = "GET PUT DELETE";// TODO: need to get this from the config file of the server
-	}
+	// if (status_code_no == 200 && request.getMethod() == "GET")
+	// {
+	// 	this->_headers["Last-Modified"] = this->setLastModifiedHeader();
+	// 	this->_headers["Content-Type"] = this->setMimeTypeHeader();
+	// }
+	// else if (status_code_no == 201 && request.getMethod() == "POST")
+	// {
+
+	// }
+	// else if (status_code_no == 200 && request.getMethod() == "DELETE")
+	// {
+
+	// }
+	// else
+	// {
+	// 	this->_headers["Content-Type"] = "text/html; charset=UTF-8";
+	// 	this->_headers["Connection"] = "close";
+	// 	if (status_code_no == 405 || status_code_no == 501)
+	// }
 }
 
 std::string HttpResponse::getHeaderList()
