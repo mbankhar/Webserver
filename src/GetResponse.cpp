@@ -1,16 +1,16 @@
-#pragma once
-
 #include "../include/Webserv.hpp"
 #include "../include/HTTPRequest.hpp"
 #include "../include/HTTPResponse.hpp"
 #include "../include/GetResponse.hpp"
 
-class HttpRequest;
-
 GetResponse::GetResponse(HttpRequest& request) : HttpResponse(request)
 {
-	makeHeaderList(request);
-	parseBody();
+	if (this->_stat_code_no != 200)
+		return;
+	setFilePath(request);
+	setStatusCode(this->_stat_code_no, request);
+	setBody(true, request);
+	setHeaders(request);
 }
 
 GetResponse::~GetResponse()
@@ -18,36 +18,22 @@ GetResponse::~GetResponse()
 	
 }
 
-void GetResponse::makeHeaderList(HttpRequest& request)
+void GetResponse::setHeaders(const HttpRequest& request)
 {
-	// this->headers["server"] = "localhost";
-	// this->headers["content-Type"] = request.get_header("accept");
-	this->_headers["content-Type"] = "text/html; charset=UTF-8";
-	this->_headers["connection"] = request.getHeaders("connection");
-}
+	this->_headers["Server"] = "webserv/42.0";
+	this->_headers["Date"] = this->setDateHeader();
+	this->_headers["Content-Type"] = "text/html; charset=UTF-8";
 
-void	GetResponse::parseBody()
-{
-	std::stringstream	buffer;
-	std::ifstream		file(this->_file_path, std::ios::binary);
-
-	if (file.is_open())
+	if (this->_stat_code_no == 200 || this->_stat_code_no == 201)
 	{
-		buffer << file.rdbuf();
-		std::string file_contents = buffer.str();
-		file.close();
-		this->_body = file_contents;
+		this->_headers["connection"] = request.getHeaders("connection");
+		this->_headers["Last-Modified"] = this->setLastModifiedHeader();
+		this->_headers["Content-Type"] = this->setMimeTypeHeader();
 	}
 	else
 	{
-		this->_status_code = "404 Not Found";
-		std::ifstream	file_404("./www/error_pages/404.html", std::ios::binary); // need to get this from the config file
-		if (file.is_open())
-		{
-			buffer << file_404.rdbuf();
-			std::string file_contents = buffer.str();
-			file.close();
-			this->_body = file_contents;
-		}
+		this->_headers["Connection"] = "close";
+		if (this->_stat_code_no == 405 || this->_stat_code_no == 501)
+			this->_headers["allowed"] = "GET PUT DELETE";// TODO: need to get this from the config file of the server
 	}
 }

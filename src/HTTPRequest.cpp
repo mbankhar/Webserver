@@ -4,18 +4,87 @@
 #include "../include/cgi.hpp"
 
 
+// HttpRequest::HttpRequest(const std::string& request, std::vector<ServerBlock>& serverBlocks)
+//     : _stat_code_no(200), _filename("")
+// {
+//     // Parse the request (existing logic)
+//     size_t headerEnd = request.find("\r\n\r\n");
+//     if (headerEnd == std::string::npos) {
+//         _stat_code_no = 400; // Bad Request
+//         throw std::runtime_error("Invalid HTTP request: Missing headers or body");
+//     }
+
+//     std::string headerPart = request.substr(0, headerEnd);
+//     this->_body = request.substr(headerEnd + 4);
+
+//     std::istringstream requestStream(headerPart);
+//     std::string requestLine;
+//     std::getline(requestStream, requestLine);
+//     if (!requestLine.empty() && requestLine.back() == '\r') {
+//         requestLine.pop_back();
+//     }
+
+//     size_t methodEnd = requestLine.find(' ');
+//     if (methodEnd == std::string::npos) {
+//         _stat_code_no = 400;
+//         throw std::runtime_error("Invalid HTTP request line: Missing method");
+//     }
+//     this->_method = parseHttpMethod(requestLine.substr(0, methodEnd));
+
+//     size_t uriEnd = requestLine.find(' ', methodEnd + 1);
+//     if (uriEnd == std::string::npos) {
+//         _stat_code_no = 400;
+//         throw std::runtime_error("Invalid HTTP request line: Missing URI");
+//     }
+//     this->_uri = requestLine.substr(methodEnd + 1, uriEnd - methodEnd - 1);
+//     this->_http_version = requestLine.substr(uriEnd + 1);
+
+//     // Parse headers
+//     this->_headers = parseHeaders(requestStream);
+
+//     // Validate headers and determine status code
+//     headersGood();
+
+//     // Match the server block
+//     this->_request_block = matchServerBlock(serverBlocks);
+// }
+// HttpRequest::HttpRequest(const std::string& request, std::vector<ServerBlock>& serverBlocks)
+//     : _stat_code_no(200), _filename("")
+// {
+//     // Parse headers and validate
+//     size_t headerEnd = request.find("\r\n\r\n");
+//     if (headerEnd == std::string::npos) {
+//         _stat_code_no = 400; // Bad Request
+//         throw std::runtime_error("Invalid HTTP request: Missing headers or body");
+//     }
+
+//     // Parse headers
+//     std::string headerPart = request.substr(0, headerEnd);
+// 	std::istringstream headerStream(headerPart); // Convert string to istringstream
+// 	_headers = parseHeaders(headerStream);      // Pass the stream to parseHeaders
+
+
+//     // Validate headers
+//     headersGood();
+
+//     // Match server block
+//     _request_block = matchServerBlock(serverBlocks);
+
+//     // Don't throw an error if the body is empty at this stage
+//     _body = request.substr(headerEnd + 4); // Body may or may not be present
+// }
+
 HttpRequest::HttpRequest(const std::string& request, std::vector<ServerBlock>& serverBlocks)
-    : _stat_code_no(200), _filename("")
-{
-    // Parse the request (existing logic)
+    : _stat_code_no(200), _filename("") {
     size_t headerEnd = request.find("\r\n\r\n");
     if (headerEnd == std::string::npos) {
         _stat_code_no = 400; // Bad Request
+        std::cerr << "[DEBUG] Missing headers or body in the request\n";
         throw std::runtime_error("Invalid HTTP request: Missing headers or body");
     }
 
     std::string headerPart = request.substr(0, headerEnd);
-    this->_body = request.substr(headerEnd + 4);
+    _body = request.substr(headerEnd + 4); // May be empty or partial if Expect: 100-continue is used
 
     std::istringstream requestStream(headerPart);
     std::string requestLine;
@@ -27,27 +96,87 @@ HttpRequest::HttpRequest(const std::string& request, std::vector<ServerBlock>& s
     size_t methodEnd = requestLine.find(' ');
     if (methodEnd == std::string::npos) {
         _stat_code_no = 400;
+        std::cerr << "[DEBUG] Missing method in the request line\n";
         throw std::runtime_error("Invalid HTTP request line: Missing method");
     }
-    this->_method = parseHttpMethod(requestLine.substr(0, methodEnd));
+    _method = parseHttpMethod(requestLine.substr(0, methodEnd));
 
     size_t uriEnd = requestLine.find(' ', methodEnd + 1);
     if (uriEnd == std::string::npos) {
         _stat_code_no = 400;
+        std::cerr << "[DEBUG] Missing URI in the request line\n";
         throw std::runtime_error("Invalid HTTP request line: Missing URI");
     }
-    this->_uri = requestLine.substr(methodEnd + 1, uriEnd - methodEnd - 1);
-    this->_http_version = requestLine.substr(uriEnd + 1);
+    _uri = requestLine.substr(methodEnd + 1, uriEnd - methodEnd - 1);
+    _http_version = requestLine.substr(uriEnd + 1);
 
     // Parse headers
-    this->_headers = parseHeaders(requestStream);
+    _headers = parseHeaders(requestStream);
 
-    // Validate headers and determine status code
+    // Validate headers (this may set _stat_code_no to 100 if Expect: 100-continue)
     headersGood();
+	if (_stat_code_no != 200)
+		return;
+
+    // If we have an Expect: 100-continue scenario, stop here.
+    // The server should respond with 100 Continue, then read the body afterward.
+    if (_stat_code_no == 100) {
+        std::cerr << "[DEBUG] Returning early for 100-continue. Will wait for body in a subsequent step.\n";
+        return;
+    }
+
+    // If not 200 OK, something went wrong; no further processing
+    if (_stat_code_no != 200) {
+        std::cerr << "[DEBUG] Invalid state (status code: " << _stat_code_no << "), exiting constructor.\n";
+        return;
+    }
 
     // Match the server block
-    this->_request_block = matchServerBlock(serverBlocks);
+    try {
+        _request_block = matchServerBlock(serverBlocks);
+        std::cerr << "[DEBUG] Matched server block successfully.\n";
+    } catch (const std::runtime_error& e) {
+        _stat_code_no = 404; // Not Found
+        std::cerr << "[DEBUG] Failed to match server block: " << e.what() << "\n";
+        return;
+    }
+
+    // If the request didn't require 100-continue and we have the body now, process it.
+    // If it's a normal POST (without Expect) and we got the body in `request`, parse multipart now:
+    if (!_body.empty()) {
+        try {
+            processBody(_body);
+        } catch (const std::runtime_error& e) {
+            // Status code is set by processBody if needed
+            std::cerr << "[DEBUG] Error processing body: " << e.what() << "\n";
+        }
+    }
 }
+
+
+
+void HttpRequest::processBody(const std::string& body) {
+    // Check that the body length matches Content-Length
+    if (body.size() != std::stoul(getHeaders("content-length"))) {
+        _stat_code_no = 400; // Bad Request
+        throw std::runtime_error("Body length does not match Content-Length header");
+    }
+
+    _body = body;
+
+    // If multipart, parse the filename now since we have the full body
+    if (getHeaders("content-type").find("multipart/form-data") != std::string::npos) {
+        try {
+            parseMultipartFilename();
+        } catch (const std::runtime_error&) {
+            _stat_code_no = 400; // Bad Request
+            throw;
+        }
+    }
+
+    // If all went well, status can remain 200 or as previously set.
+}
+
 
 
 
@@ -171,9 +300,10 @@ void HttpRequest::debug() const
     for (const auto& header : _headers) {
         std::cout << "  " << header.first << ": " << header.second << "\n";
     }
-    std::cout << "Body Length: " << _body.size() << "\n";
+    std::cout << "Body Length: " << _body.size() << " (Processed: " << (!_body.empty() ? "Yes" : "No") << ")\n";
     std::cout << "====================================================\n";
 }
+
 
 
 
@@ -223,18 +353,7 @@ void HttpRequest::setFilename(const std::string& filename)
 {
 	_filename = filename;
 }
-void HttpRequest::validateHeaders()
-{
-	if (_headers.find("content-length") == _headers.end()) {
-		_stat_code_no = 411; // Length Required
-		throw std::runtime_error("411 Length Required: Missing Content-Length header");
-	}
 
-	if (_headers.find("content-type") == _headers.end()) {
-		_stat_code_no = 400; // Bad Request
-		throw std::runtime_error("400 Bad Request: Missing Content-Type header");
-	}
-}
 
 void HttpRequest::parseMultipartFilename()
 {
@@ -284,53 +403,57 @@ void HttpRequest::parseMultipartFilename()
     throw std::runtime_error("Filename not found in multipart body");
 }
 
-void HttpRequest::headersGood()
-{
-    auto content_length_it = getHeaders("content-length");
-    if (content_length_it.empty())
-    {
+void HttpRequest::validateHeaders() {
+    if (_headers.find("content-length") == _headers.end()) {
+        _stat_code_no = 411; // Length Required
+        std::cerr << "[DEBUG] Missing Content-Length header\n";
+        throw std::runtime_error("411 Length Required: Missing Content-Length header");
+    }
+
+    if (_headers.find("content-type") == _headers.end()) {
+        _stat_code_no = 400; // Bad Request
+        std::cerr << "[DEBUG] Missing Content-Type header\n";
+        throw std::runtime_error("400 Bad Request: Missing Content-Type header");
+    }
+}
+
+void HttpRequest::headersGood() {
+    // Check Content-Length
+    auto content_length_str = getHeaders("content-length");
+    if (content_length_str.empty()) {
         _stat_code_no = 411; // Length Required
         return;
     }
 
-    try
-    {
-        size_t content_length = std::stoul(content_length_it);
+    try {
+        size_t content_length = std::stoul(content_length_str);
         const size_t MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50 MB
-        if (content_length <= 0 || content_length > MAX_UPLOAD_SIZE)
-        {
+        if (content_length <= 0 || content_length > MAX_UPLOAD_SIZE) {
             _stat_code_no = 413; // Payload Too Large
             return;
         }
-    }
-    catch (const std::exception&)
-    {
+    } catch (const std::exception&) {
         _stat_code_no = 400; // Bad Request
         return;
     }
 
-    auto content_type_it = getHeaders("content-type");
-    if (content_type_it.empty())
-    {
-        _stat_code_no = 400; // Bad Request
+    // Check Expect: 100-continue BEFORE attempting to parse multipart body
+    auto expect_header = getHeaders("expect");
+    if (!expect_header.empty() && expect_header == "100-continue") {
+        std::cerr << "[DEBUG] Expect: 100-continue header detected, setting status code to 100\n";
+        _stat_code_no = 100; 
+        return; // Return now, so we can respond with 100 Continue.
+    }
+
+    // Check Content-Type
+    auto content_type_str = getHeaders("content-type");
+    if (content_type_str.empty()) {
+        _stat_code_no = 400; // Bad Request (Body is expected but Content-Type missing)
         return;
     }
 
-    // Validate content type (ensure it's multipart/form-data)
-    if (content_type_it.find("multipart/form-data") != std::string::npos)
-    {
-        try
-        {
-            parseMultipartFilename();
-        }
-        catch (const std::runtime_error&)
-        {
-            _stat_code_no = 400; // Bad Request
-            return;
-        }
-        _stat_code_no = 100; // Ready for 100 Continue
-        return;
-    }
-
-    _stat_code_no = 415; // Unsupported Media Type
+    // If we get here without returning, we have a valid header set and no `Expect: 100-continue`
+    // The body (if any) should be already present in _body if it's a simple request (like a POST without Expect).
+    // We'll parse multipart, if needed, later in processBody().
+    _stat_code_no = 200; // OK
 }

@@ -1,15 +1,3 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   Client.hpp                                         :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: rchavez@student.42heilbronn.de <rchavez    +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2024/12/06 15:39:23 by rchavez           #+#    #+#             */
-/*   Updated: 2024/12/12 18:51:08 by rchavez@stu      ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 #pragma once
 
 #include "Webserv.hpp"
@@ -49,7 +37,8 @@ class Client
 	void		popRequest();
 	bool		&isSending();
 	bool		&isReceiving();
+	void		queueResponse(std::string response);
 
 	size_t	parseRequest(char *buffer, int bytesRead);
-	void	queueResponse(string response);
+	// void	queueResponse(string response);
 };

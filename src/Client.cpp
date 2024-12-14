@@ -1,15 +1,3 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   Client.cpp                                         :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: rchavez@student.42heilbronn.de <rchavez    +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2024/12/09 11:34:06 by rchavez           #+#    #+#             */
-/*   Updated: 2024/12/12 18:51:33 by rchavez@stu      ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 #include "../include/Client.hpp"
 
 Client::Client() : clientSock(-2)
@@ -90,6 +78,11 @@ size_t	Client::parseRequest(char *buffer, int bytesRead)
 	}
 	return (count);
 }
+
+void	Client::queueResponse(std::string response)
+{
+	this->responses.push_back(response);
+}
 	//Extract a part of the buffer until a /r/n/r/n or the end into a string
 
 	//if isSending is true, add that part into the last request in the queue
@@ -99,8 +92,3 @@ size_t	Client::parseRequest(char *buffer, int bytesRead)
 	//else create an event to proccess the completed request
 
 	//repeat until the buffer is empty
-
-void   Client::queueResponse(string response)
-{
-	this->responses.push_back(response);
-}
