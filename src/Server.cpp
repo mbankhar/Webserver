@@ -17,9 +17,9 @@ class log;
 
 extern std::atomic<bool> keepRunning;
 
-Server::Server(std::vector<ServerBlock>& server_blocks) : _server_blocks(server_blocks)
+Server::Server(std::vector<ServerBlock>& server_blocks, int i) : _server_blocks(server_blocks)
 {
-	int port = std::stoi(server_blocks[0].directive_pairs["listen"]);// TODO: need to make this cycle through all server blocks
+	int port = std::stoi(server_blocks[i].directive_pairs["listen"]);// TODO: need to make this cycle through all server blocks
 	serverSock = socket(AF_INET, SOCK_STREAM, 0);
 	if (serverSock < 0) throw std::runtime_error("Socket creation failed");
 

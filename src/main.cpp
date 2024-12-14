@@ -1,8 +1,16 @@
 #include "../include/Webserv.hpp"
 #include "../include/Server.hpp"
 #include "../include/Config.hpp"
+#include <thread>
 
 std::atomic<bool> keepRunning(true); // Global flag for server loop
+
+void	InitServer(Config &config, int i)
+{
+	Server server(config.getServerBlocks(), i);
+
+	server.run();
+}
 
 void signalHandler(int signum) {
     std::cout << "\nInterrupt signal (" << signum << ") received.\n";
@@ -33,9 +41,23 @@ int main(int argc, char** argv) {
 	try {
 		Config config(argv[1]); // Load and validate configuration
 
-		Server server(config.getServerBlocks());
-		server.run();
-		std::cout << "Server shutting down...\n";
+		int ports = config.getServerBlocks().size();
+
+		std::vector<std::thread> threads;
+
+		for (int i = 0; i < ports; i++) {
+			// Create a thread for each server
+			threads.emplace_back(InitServer, std::ref(config), i);
+		}
+
+		// Wait for all threads to finish
+		for (auto& thread : threads) {
+			if (thread.joinable()) {
+				thread.join();
+			}
+		}
+
+		std::cout << "All servers shut down gracefully.\n";
 	} catch (const std::exception& e) {
 		std::cerr << "Error: " << e.what() << std::endl;
 		return 1;

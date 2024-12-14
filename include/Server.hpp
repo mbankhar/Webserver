@@ -25,7 +25,7 @@ class Server {
 public:
 	// Server();
 	~Server();
-	Server(std::vector<ServerBlock>& server_blocks);
+	Server(std::vector<ServerBlock>& server_blocks, int i);
 	void run();
 	void handleGet(int clientSock, HttpRequest& httpRequest);
 	void handlePost(int clientSock, HttpRequest& httpRequest);
