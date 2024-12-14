@@ -104,22 +104,45 @@
             window.location.href = 'log.html';
         }
 
-        // Handle file upload form submission
+        // Handle file upload form submission with feedback
         document.getElementById('uploadForm').addEventListener('submit', function (e) {
-            e.preventDefault();
+            e.preventDefault(); // Prevent the default form submission behavior
+
+            const uploadButton = document.querySelector("#uploadForm button");
+            const fileInput = document.getElementById('fileInput');
             const formData = new FormData(this);
+
+            // Provide visual feedback during upload
+            uploadButton.disabled = true;
+            uploadButton.textContent = "Uploading...";
+
             fetch('/upload', {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.text())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                return response.text();
+            })
             .then(data => {
                 alert("File uploaded successfully!");
                 console.log(data);
+
+                // Provide feedback about the uploaded file
+                const uploadedFileMessage = document.createElement('p');
+                uploadedFileMessage.textContent = `Uploaded: ${fileInput.files[0].name}`;
+                document.body.appendChild(uploadedFileMessage);
             })
             .catch(error => {
-                alert("Error uploading file.");
+                alert(`Error uploading file: ${error.message}`);
                 console.error(error);
+            })
+            .finally(() => {
+                // Re-enable the button and reset text
+                uploadButton.disabled = false;
+                uploadButton.textContent = "Upload";
             });
         });
     </script>

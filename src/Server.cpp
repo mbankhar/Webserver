@@ -92,6 +92,7 @@ void Server::run()
 				else if (event % 10 == 1)
 				{
 					HttpRequest		request(this->clients[event/10].getRequest(), this->_server_blocks);
+					request.debug();
 					HttpResponse	response(request);
 					this->clients[event/10].popRequest();
 					this->clients[event/10].queueResponse(response.returnResponse());
@@ -101,7 +102,7 @@ void Server::run()
 // "\r\n"
 // "Hello, World!");
 					this->postEvent(event/10, 2);
-					response.rspDebug();
+					response.debug();
 				}
 				else if (event % 10 == 2)
 					msg_send(this->clients[event/10], 0);
