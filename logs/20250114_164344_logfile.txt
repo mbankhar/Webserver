@@ -1,0 +1,850 @@
+[20250114_164344] Server running in DEBUG mode.
+[20250114_164344] Server started
+[20250114_164347] Read Event
+[20250114_164347] Client accepted : 7
+Connected through port : 8080
+Through host : localhost:8080
+[20250114_164347] Read Event
+[20250114_164347] Read Event
+[20250114_164347] Client accepted : 8
+Connected through port : 8080
+Through host : localhost:8080
+[20250114_164347] Process Event
+[20250114_164347] Send Event
+[20250114_164347] Sending message to client : HTTP/1.1 200 OK
+Connection: keep-alive
+Content-Type: text/html
+Date: Tue, 14 Jan 2025 16:43:47 CET
+Last-Modified: 
+Server: webserv/42.0
+Content-Length: 7612
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Main Page</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      line-height: 1.6;
+    }
+    .comment-section {
+      margin-top: 20px;
+    }
+    .comment {
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+    }
+    .comment button {
+      margin-top: 10px;
+      padding: 5px 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Welcome to the Main Page</h1>
+  <div>
+    <label for="name">Name:</label>
+    <input type="text" id="name" placeholder="Enter your name" />
+  </div>
+  <div>
+    <label for="comment">Comment:</label>
+    <textarea id="comment" placeholder="Leave a comment"></textarea>
+  </div>
+  <button onclick="addComment()">Submit Comment</button>
+
+  <h2>Upload File (Chunked)</h2>
+  We keep a "form-like" structure for user convenience, but we will NOT use the default submit. Instead, we'll handle the chunked upload via JavaScript.
+  <div>
+    <input type="file" id="fileInput" name="file" />
+    <button onclick="uploadFileChunked()">Upload in Chunks</button>
+  </div>
+  <div id="uploadStatus"></div>
+
+  <h2>CGI Interactions</h2>
+  <div class="button-section">
+    <label for="calcInput">Calculator Input:</label>
+    <input type="text" id="calcInput" placeholder="e.g., 2+2" />
+    <button onclick="callCalculatorCGI()">Calculate</button>
+
+    <label for="helloInput">Hello Input:</label>
+    <input type="text" id="helloInput" placeholder="Enter your name" />
+    <button onclick="callHelloCGI()">Say Hello</button>
+  </div>
+
+  <h2>Comments</h2>
+  <div id="commentsContainer" class="comment-section"></div>
+
+  <button onclick="goToLogPage()">Go to Log Page</button>
+
+  <script>
+    // ------------------------------
+    //   COMMENT FUNCTIONS
+    // ------------------------------
+    const comments = [];
+    function addComment() {
+      const name = document.getElementById('name').value.trim();
+      const comment = document.getElementById('comment').value.trim();
+      if (!name || !comment) {
+        alert("Please provide both name and comment.");
+        return;
+      }
+      const commentObject = { name, comment };
+      comments.push(commentObject);
+      displayComments();
+      clearInputFields();
+    }
+    function displayComments() {
+      const commentsContainer = document.getElementById('commentsContainer');
+      commentsContainer.innerHTML = '';
+      comments.forEach((comment, index) => {
+        const commentDiv = document.createElement('div');
+        commentDiv.className = 'comment';
+        commentDiv.innerHTML = `
+          <strong>${comment.name}</strong>
+          <p>${comment.comment}</p>
+          <button onclick="deleteComment(${index})">Delete</button>
+        `;
+        commentsContainer.appendChild(commentDiv);
+      });
+    }
+    function deleteComment(index) {
+      comments.splice(index, 1);
+      displayComments();
+    }
+    function clearInputFields() {
+      document.getElementById('name').value = '';
+      document.getElementById('comment').value = '';
+    }
+    function goToLogPage() {
+      // Store comments in session storage for the log page
+      sessionStorage.setItem('comments', JSON.stringify(comments));
+      window.location.href = 'log.html';
+    }
+
+    // ------------------------------
+    //   CHUNKED UPLOAD FUNCTION
+    // ------------------------------
+    const uploadEndpoint = "/upload-chunk"; // Adjust this to your actual server endpoint
+    const CHUNK_SIZE = 1024 * 256; // 512 KB for demo
+    let offset = 0;
+    let file;
+    let totalSize;
+    let fileName;
+
+    function uploadFileChunked() {
+      const fileInput = document.getElementById("fileInput");
+      if (!fileInput.files.length) {
+        alert("Please select a file before uploading.");
+        return;
+      }
+
+      file = fileInput.files[0];
+      totalSize = file.size;
+      fileName = file.name;
+      const statusDiv = document.getElementById("uploadStatus");
+      statusDiv.innerHTML = `Preparing to upload "${file.name}"...`;
+
+      offset = 0; // Reset offset for each new upload
+
+      // Send a single POST request with all chunks
+      sendChunks();
+    }
+
+    // Function to send all chunks in one request
+    async function sendChunks() {
+      const statusDiv = document.getElementById("uploadStatus");
+      const formData = new FormData();
+      const headers = new Headers();
+
+      // Add metadata to headers
+      headers.append("fileName", fileName);
+      headers.append("totalSize", totalSize);
+
+      // Loop through file and append chunks to FormData
+      while (offset < totalSize) {
+        const start = offset;
+        const end = Math.min(start + CHUNK_SIZE, totalSize);
+        const chunk = file.slice(start, end);
+
+        if (chunk.size > 0) { // Only append file chunks that contain data
+          formData.append("fileChunk", chunk, file.name);
+        }
+
+        offset += CHUNK_SIZE; // Update offset for the next chunk
+      }
+
+      // Send the entire file and its chunks in a single POST request
+      try {
+        const response = await fetch(uploadEndpoint, {
+          method: "POST",
+          headers: headers, // Metadata in headers
+          body: formData,   // All file chunks in the body
+        });
+
+        if (response.ok) {
+          statusDiv.innerHTML = `Upload complete for "${file.name}"!`;
+        } else {
+          statusDiv.innerHTML = `Failed to upload: ${response.statusText}`;
+        }
+      } catch (error) {
+        statusDiv.innerHTML = `Error uploading file: ${error.message}`;
+      }
+    }
+
+    // ------------------------------
+    //   CGI FUNCTIONS
+    // ------------------------------
+    async function callCalculatorCGI() {
+      const input = document.getElementById('calcInput').value.trim();
+      if (!input) {
+        alert('Please provide input for the calculator.');
+        return;
+      }
+
+      const [num1, op, num2] = parseCalculationInput(input);
+      if (!num1 || !op || !num2) {
+        alert('Invalid input format. Use the format: num1 op num2 (e.g., 2+2).');
+        return;
+      }
+
+      try {
+        const response = await fetch(`http://localhost:8080/cgi-bin/calculator.py`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `num1=${num1}&num2=${num2}&op=${encodeURIComponent(op)}`
+        });
+        const text = await response.text();
+        document.getElementById('uploadStatus').innerHTML = text;
+      } catch (error) {
+        document.getElementById('uploadStatus').innerHTML = `Error: ${error.message}`;
+      }
+    }
+
+    function parseCalculationInput(input) {
+      const match = input.match(/(\d+)([+\-*/])(\d+)/);
+      return match ? [match[1], match[2], match[3]] : [];
+    }
+
+    async function callHelloCGI() {
+      const name = document.getElementById('helloInput').value.trim();
+      if (!name) {
+        alert('Please provide a name for the Hello CGI.');
+        return;
+      }
+
+      try {
+        const response = await fetch('http://localhost:8080/cgi-bin/hello.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `name=${encodeURIComponent(name)}`
+        });
+        const text = await response.text();
+        document.getElementById('uploadStatus').innerHTML = text;
+      } catch (error) {
+        document.getElementById('uploadStatus').innerHTML = `Error: ${error.message}`;
+      }
+    }
+  </script>
+</body>
+</html>
+
+
+
+[20250114_164347] Read Event
+[20250114_164347] Client Closed Connection
+[20250114_164347] Removing Client 7
+[20250114_164352] Read Event
+[20250114_164352] Read Event
+[20250114_164352] Process Event
+[20250114_164352] Read Event
+[20250114_164352] Send Event
+[20250114_164352] Sending message to client : HTTP/1.1 404 Not Found
+Connection: close
+Content-Type: text/html; charset=UTF-8
+Date: Tue, 14 Jan 2025 16:43:52 CET
+Server: webserv/42.0
+Content-Length: 1061
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Page Not Found</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            text-align: center;
+        }
+        h1 {
+            color: #f44336;
+        }
+        .message {
+            font-size: 1.2em;
+            margin: 20px 0;
+        }
+        .button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 1em;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>404 - Page Not Found</h1>
+    <div class="message">
+        Oops! The page you're looking for doesn't exist or has been moved.
+    </div>
+    <a href="../index.html" class="button">Go to Main Page</a>
+</body>
+</html>
+
+
+
+[20250114_164352] Read Event
+[20250114_164352] Read Event
+[20250114_164352] Read Event
+[20250114_164352] Read Event
+[20250114_164352] Read Event
+[20250114_164352] Process Event
+[20250114_164352] Writing into file...
+[20250114_164352] Read Event
+[20250114_164352] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Read Event
+[20250114_164353] Process Event
+[20250114_164353] Writing into file...
+[20250114_164353] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Process Event
+[20250114_164354] Writing into file...
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164354] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164355] Process Event
+[20250114_164355] Writing into file...
+[20250114_164355] Read Event
+[20250114_164355] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Read Event
+[20250114_164356] Process Event
+[20250114_164356] Writing into file...
+[20250114_164356] Read Event
+[20250114_164356] Client Closed Connection
+[20250114_164356] Removing Client 8
+[20250114_164403] Read Event
+[20250114_164403] Client accepted : 7
+Connected through port : 8080
+Through host : localhost:8080
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Process Event
+[20250114_164403] Read Event
+[20250114_164403] Send Event
+[20250114_164403] Sending message to client : HTTP/1.1 404 Not Found
+Connection: close
+Content-Type: text/html; charset=UTF-8
+Date: Tue, 14 Jan 2025 16:44:03 CET
+Server: webserv/42.0
+Content-Length: 1061
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Page Not Found</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            text-align: center;
+        }
+        h1 {
+            color: #f44336;
+        }
+        .message {
+            font-size: 1.2em;
+            margin: 20px 0;
+        }
+        .button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 1em;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>404 - Page Not Found</h1>
+    <div class="message">
+        Oops! The page you're looking for doesn't exist or has been moved.
+    </div>
+    <a href="../index.html" class="button">Go to Main Page</a>
+</body>
+</html>
+
+
+
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Process Event
+[20250114_164403] Writing into file...
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Read Event
+[20250114_164403] Process Event
+[20250114_164403] Writing into file...
+[20250114_164403] Read Event
+[20250114_164403] Client Closed Connection
+[20250114_164403] Removing Client 7
+[20250114_164410] Read Event
+[20250114_164410] Client accepted : 7
+Connected through port : 8080
+Through host : localhost:8080
+[20250114_164410] Read Event
+[20250114_164410] Read Event
+[20250114_164410] Process Event
+[20250114_164410] Read Event
+[20250114_164410] Send Event
+[20250114_164410] Sending message to client : HTTP/1.1 404 Not Found
+Connection: close
+Content-Type: text/html; charset=UTF-8
+Date: Tue, 14 Jan 2025 16:44:10 CET
+Server: webserv/42.0
+Content-Length: 1061
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Page Not Found</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            text-align: center;
+        }
+        h1 {
+            color: #f44336;
+        }
+        .message {
+            font-size: 1.2em;
+            margin: 20px 0;
+        }
+        .button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 1em;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>404 - Page Not Found</h1>
+    <div class="message">
+        Oops! The page you're looking for doesn't exist or has been moved.
+    </div>
+    <a href="../index.html" class="button">Go to Main Page</a>
+</body>
+</html>
+
+
+
+[20250114_164410] Read Event
+[20250114_164410] Read Event
+[20250114_164410] Read Event
+[20250114_164410] Read Event
+[20250114_164410] Read Event
+[20250114_164410] Client Closed Connection
+[20250114_164410] Removing Client 7
+[20250114_164410] Process Event
